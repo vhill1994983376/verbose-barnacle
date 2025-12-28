@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Qdrant Memory Manager</h1>
+        
+        <div class="section">
+            <h2>Qdrant Server Configuration</h2>
+            <div class="form-group">
+                <label for="qdrantUrl">Qdrant URL:</label>
+                <input type="text" id="qdrantUrl" placeholder="http://localhost:6333">
+            </div>
+            
+            <div class="form-group">
+                <label for="openRouterApiKey">OpenRouter API Key:</label>
+                <input type="password" id="openRouterApiKey" placeholder="Enter your OpenRouter API key">
+            </div>
+            
+            <button id="saveConfigBtn" class="btn primary">Save Configuration</button>
+        </div>
+        
+        <div class="section">
+            <h2>Storage Options</h2>
+            <div class="form-group">
+                <label>
+                    <input type="radio" name="storageType" value="character" checked> 
+                    Separate collections per character
+                </label>
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="radio" name="storageType" value="chat"> 
+                    Separate collections per chat
+                </label>
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Memory Management</h2>
+            <div class="form-group">
+                <label for="memoryInterval">Memory Creation Interval:</label>
+                <select id="memoryInterval">
+                    <option value="1">Every 1 message</option>
+                    <option value="2" selected>Every 2 messages</option>
+                    <option value="5">Every 5 messages</option>
+                    <option value="10">Every 10 messages</option>
+                </select>
+            </div>
+            
+            <button id="uploadChatBtn" class="btn primary">Upload Current Chat</button>
+            <p class="info-text">Uploads all current messages to Qdrant</p>
+        </div>
+        
+        <div class="section">
+            <h2>Memory Search</h2>
+            <div class="form-group">
+                <label for="searchKeyword">Search Keywords:</label>
+                <input type="text" id="searchKeyword" placeholder="Enter keywords separated by commas">
+            </div>
+            <button id="searchBtn" class="btn secondary">Search Memories</button>
+            <div id="searchResults" class="results-container"></div>
+        </div>
+        
+        <div class="section">
+            <h2>Memory Counter</h2>
+            <div class="counter-display">
+                <span id="memoryCount">0</span> memories
+            </div>
+            <button id="refreshCounterBtn" class="btn small">Refresh Count</button>
+        </div>
+        
+        <div class="status-bar">
+            <div id="connectionStatus">Not Connected</div>
+            <div id="collectionInfo">No Collection Loaded</div>
+        </div>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>
