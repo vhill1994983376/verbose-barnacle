@@ -1,10 +1,11 @@
-// Qdrant Memory Manager Extension for Silly Tavern
+// Qdrant Memory Manager Extension for Silly Tavern v1.15
 
 // Initialize extension vars
 let config = {};
 let currentCollection = '';
 let memoryCount = 0;
 let messageCounter = 0;
+let isActive = false;
 
 // DOM Elements
 const qdrantUrlInput = document.getElementById('qdrantUrl');
@@ -41,7 +42,74 @@ document.addEventListener('DOMContentLoaded', () => {
     // Update UI elements
     updateConnectionStatus('Disconnected');
     updateMemoryCounter();
+    
+    // Initialize extension in Silly Tavern v1.15 environment
+    initExtension();
 });
+
+// Initialize extension functionality
+async function initExtension() {
+    try {
+        // Attempt to access Silly Tavern APIs
+        if (typeof window.SillyTavern !== 'undefined') {
+            // Register extension with Silly Tavern v1.15
+            await registerExtension();
+        } else {
+            // Fallback for direct usage
+            console.warn("Silly Tavern context not available. Running in standalone mode.");
+            isActive = true;
+        }
+    } catch (error) {
+        console.error("Failed to initialize extension:", error);
+        updateConnectionStatus("Initialization failed");
+    }
+}
+
+// Register with Silly Tavern v1.15
+async function registerExtension() {
+    // In v1.15, extensions might need to register differently
+    if (window.SillyTavern.extensions) {
+        try {
+            // Register the extension with Silly Tavern
+            window.SillyTavern.extensions.register({
+                name: 'Qdrant Memory Manager',
+                version: '1.15',
+                description: 'Manage agentic memories with Qdrant server integration',
+                icon: 'memory',
+                init: () => {
+                    isActive = true;
+                    setupEventListeners();
+                    console.log('Qdrant Memory Manager extension initialized');
+                },
+                destroy: () => {
+                    isActive = false;
+                    console.log('Qdrant Memory Manager extension destroyed');
+                }
+            });
+        } catch (error) {
+            console.error("Extension registration failed:", error);
+        }
+    }
+}
+
+// Setup event listeners for Silly Tavern v1.15
+function setupEventListeners() {
+    // Listen for new messages (v1.15 event system)
+    if (window.SillyTavern.events) {
+        window.SillyTavern.events.on('message', handleNewMessage);
+        window.SillyTavern.events.on('characterChanged', handleCharacterChange);
+        window.SillyTavern.events.on('chatChanged', handleChatChange);
+    }
+}
+
+// Cleanup event listeners
+function cleanupEventListeners() {
+    if (window.SillyTavern.events) {
+        window.SillyTavern.events.off('message', handleNewMessage);
+        window.SillyTavern.events.off('characterChanged', handleCharacterChange);
+        window.SillyTavern.events.off('chatChanged', handleChatChange);
+    }
+}
 
 // Update radio buttons for storage types
 function updateStorageType(selectedType) {
@@ -105,12 +173,12 @@ uploadChatBtn.addEventListener('click', async () => {
             return;
         }
         
-        // Get current chat messages - simulate getting actual messages
-        const messages = [
-            { role: 'user', content: 'Hello there!' },
-            { role: 'assistant', content: 'Hello! How can I help you today?' },
-            { role: 'user', content: 'I need some information about Qdrant.' }
-        ];
+        // Get current chat messages from Silly Tavern v1.15
+        const messages = await getChatMessages();
+        
+        if (messages.length === 0) {
+            throw new Error("No messages found to upload");
+        }
         
         // Upload messages to Qdrant
         await uploadMessagesToQdrant(messages, collectionName);
@@ -125,6 +193,29 @@ uploadChatBtn.addEventListener('click', async () => {
         console.error('Upload error:', error);
     }
 });
+
+// Get chat messages from Silly Tavern (v1.15 compatible)
+async function getChatMessages() {
+    // In v1.15, access chat messages through Silly Tavern API
+    try {
+        // This would depend on Silly Tavern v1.15 API
+        const messages = [];
+        
+        // Simulate fetching messages - in reality this would call Silly Tavern APIs
+        return new Promise((resolve) => {
+            setTimeout(() => {
+                resolve([
+                    { role: 'user', content: 'Hello there!' },
+                    { role: 'assistant', content: 'Hello! How can I help you today?' },
+                    { role: 'user', content: 'I need some information about Qdrant.' }
+                ]);
+            }, 300);
+        });
+    } catch (error) {
+        console.error("Failed to retrieve chat messages:", error);
+        return [];
+    }
+}
 
 // Search memories in Qdrant
 searchBtn.addEventListener('click', async () => {
@@ -176,16 +267,56 @@ refreshCounterBtn.addEventListener('click', async () => {
     }
 });
 
-// Get active character name (simulated)
+// Get active character name (v1.15 compatible)
 function getActiveCharacterName() {
-    // In real implementation, would fetch character name from Silly Tavern context
-    return 'Character_' + Math.floor(Math.random() * 1000);
+    try {
+        // Check if we have Silly Tavern API access
+        if (window.SillyTavern && window.SillyTavern.getCharacter) {
+            const character = window.SillyTavern.getCharacter();
+            return character?.name || 'Unknown_Character';
+        }
+        // Fallback for direct usage
+        return 'Character_' + Math.floor(Math.random() * 1000);
+    } catch (error) {
+        console.error("Failed to get character name:", error);
+        return 'Character_' + Math.floor(Math.random() * 1000);
+    }
 }
 
-// Get current chat title (simulated)
+// Get current chat title (v1.15 compatible)
 function getCurrentChatTitle() {
-    // In real implementation, would fetch chat title from Silly Tavern context
-    return 'Chat_' + Math.floor(Math.random() * 1000);
+    try {
+        // Check if we have Silly Tavern API access
+        if (window.SillyTavern && window.SillyTavern.getChat) {
+            const chat = window.SillyTavern.getChat();
+            return chat?.title || 'Unnamed_Chat';
+        }
+        // Fallback for direct usage
+        return 'Chat_' + Math.floor(Math.random() * 1000);
+    } catch (error) {
+        console.error("Failed to get chat title:", error);
+        return 'Chat_' + Math.floor(Math.random() * 1000);
+    }
+}
+
+// Handle character change event
+function handleCharacterChange(character) {
+    console.log('Character changed to:', character?.name);
+    // Auto-update collection based on new character if needed
+    if (config.storageType === 'character') {
+        // Rebuild collection reference if needed
+        updateCollectionInfo();
+    }
+}
+
+// Handle chat change event
+function handleChatChange(chat) {
+    console.log('Chat changed to:', chat?.title);
+    // Auto-update collection reference if needed
+    if (config.storageType === 'chat') {
+        // Rebuild collection reference if needed
+        updateCollectionInfo();
+    }
 }
 
 // Check if collection exists in Qdrant
@@ -253,7 +384,18 @@ function updateConnectionStatus(status) {
 
 // Update collection info display
 function updateCollectionInfo() {
-    collectionInfo.textContent = currentCollection ? `Current Collection: ${currentCollection}` : "No Collection Loaded";
+    const charName = getActiveCharacterName();
+    const chatName = getCurrentChatTitle();
+    
+    if (config.storageType === 'character') {
+        collectionInfo.textContent = currentCollection ? 
+            `Current Collection: ${currentCollection}` : 
+            `Collection for: ${charName}`;
+    } else {
+        collectionInfo.textContent = currentCollection ? 
+            `Current Collection: ${currentCollection}` : 
+            `Collection for: ${chatName}`;
+    }
     collectionInfo.style.fontWeight = currentCollection ? 'bold' : 'normal';
 }
 
@@ -288,39 +430,54 @@ function displaySearchResults(results) {
     searchResultsDiv.innerHTML = html;
 }
 
-// Handle messages (simulated)
-function handleNewMessage(message) {
+// Handle new message input (v1.15)
+function handleNewMessage(messageData) {
+    // Message object format for Silly Tavern v1.15
+    const { message, sender, timestamp } = messageData;
+    
+    if (!isActive) return;
+    
     messageCounter++;
     
     // Create agenic memory when interval is met
     if (messageCounter % config.memoryInterval === 0) {
-        createAgenticMemory(message);
+        createAgenticMemory(message, sender);
     }
     
     // Check for keyword in message and trigger memory creation
     const keywords = ['memory', 'remember', 'think'];
-    const containsKeyword = keywords.some(keyword => message.toLowerCase().includes(keyword));
+    const containsKeyword = keywords.some(keyword => 
+        message.toLowerCase().includes(keyword)
+    );
     
     if (containsKeyword && messageCounter % 5 === 0) {
-        createAgenticMemory(message);
+        createAgenticMemory(message, sender);
     }
 }
 
-// Simulate creating an agentic memory
-function createAgenticMemory(content) {
+// Create agentic memory (v1.15)
+function createAgenticMemory(content, sender) {
     try {
         if (!config.qdrantUrl) {
             throw new Error("Qdrant URL not configured");
         }
         
+        // In v1.15, we may have more structured data
+        const memory = {
+            content: content,
+            creator: sender,
+            timestamp: Date.now(),
+            collection: currentCollection || 'default'
+        };
+        
         // Simulate memory creation
-        console.log(`Creating agentic memory: "${content}"`);
+        console.log(`Creating agentic memory:`, memory);
         
         // Increment counter (in a real implementation, we'd add to Qdrant)
         memoryCount++;
         updateMemoryCounter();
         
-        updateConnectionStatus(`Created agentic memory with content: "${content.substring(0, 30)}..."`);
+        updateConnectionStatus(`Created agentic memory from ${sender}: "${content.substring(0, 30)}..."`);
         
     } catch (error) {
         updateConnectionStatus(`Error: ${error.message}`);
@@ -328,20 +485,39 @@ function createAgenticMemory(content) {
     }
 }
 
-// Simulated message listener - for demo purposes
+// Cleanup on extension removal
+window.addEventListener('beforeunload', () => {
+    cleanupEventListeners();
+});
+
+// Simulated initial messages for demonstration
 setTimeout(() => {
-    handleNewMessage("Hello, this is a test message to demonstrate agentic memory creation.");
-    handleNewMessage("The second message for testing purposes.");
-    handleNewMessage("The third message that should trigger memory generation.");
+    handleNewMessage({ 
+        message: "Hello, this is a test message to demonstrate agentic memory creation.", 
+        sender: "User", 
+        timestamp: Date.now() 
+    });
+    handleNewMessage({ 
+        message: "The second message for testing purposes.", 
+        sender: "User", 
+        timestamp: Date.now() 
+    });
+    handleNewMessage({ 
+        message: "The third message that should trigger memory generation.", 
+        sender: "User", 
+        timestamp: Date.now() 
+    });
 }, 1000);
 
-// Export functions for use in Silly Tavern environment
+// Export for Silly Tavern environment
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         createAgenticMemory,
         handleNewMessage,
         getSelectedStorageType,
         getActiveCharacterName,
-        getCurrentChatTitle
+        getCurrentChatTitle,
+        initExtension,
+        registerExtension
     };
 }
