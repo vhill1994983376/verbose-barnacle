@@ -1,74 +1,219 @@
 // Qdrant Memory Manager Extension for Silly Tavern v1.15
 
 // Initialize extension vars
-let config = {};
+let config = {
+    memoryInterval: 2
+};
 let currentCollection = '';
 let memoryCount = 0;
 let messageCounter = 0;
 let isActive = false;
 
 // DOM Elements
-const qdrantUrlInput = document.getElementById('qdrantUrl');
-const openRouterApiKeyInput = document.getElementById('openRouterApiKey');
-const saveConfigBtn = document.getElementById('saveConfigBtn');
-const storageTypeRadios = document.getElementsByName('storageType');
-const memoryIntervalSelect = document.getElementById('memoryInterval');
-const uploadChatBtn = document.getElementById('uploadChatBtn');
-const searchKeywordInput = document.getElementById('searchKeyword');
-const searchBtn = document.getElementById('searchBtn');
-const searchResultsDiv = document.getElementById('searchResults');
-const memoryCountSpan = document.getElementById('memoryCount');
-const refreshCounterBtn = document.getElementById('refreshCounterBtn');
-const connectionStatus = document.getElementById('connectionStatus');
-const collectionInfo = document.getElementById('collectionInfo');
+let qdrantUrlInput = null;
+let openRouterApiKeyInput = null;
+let saveConfigBtn = null;
+let storageTypeRadios = [];
+let memoryIntervalSelect = null;
+let uploadChatBtn = null;
+let searchKeywordInput = null;
+let searchBtn = null;
+let searchResultsDiv = null;
+let memoryCountSpan = null;
+let refreshCounterBtn = null;
+let connectionStatus = null;
+let collectionInfo = null;
 
-// Load saved configuration
-document.addEventListener('DOMContentLoaded', () => {
-    // Try to load saved settings
+// Initialize DOM elements and listeners
+function initDOM() {
+    qdrantUrlInput = document.getElementById('qdrantUrl');
+    openRouterApiKeyInput = document.getElementById('openRouterApiKey');
+    saveConfigBtn = document.getElementById('saveConfigBtn');
+    storageTypeRadios = document.getElementsByName('storageType');
+    memoryIntervalSelect = document.getElementById('memoryInterval');
+    uploadChatBtn = document.getElementById('uploadChatBtn');
+    searchKeywordInput = document.getElementById('searchKeyword');
+    searchBtn = document.getElementById('searchBtn');
+    searchResultsDiv = document.getElementById('searchResults');
+    memoryCountSpan = document.getElementById('memoryCount');
+    refreshCounterBtn = document.getElementById('refreshCounterBtn');
+    connectionStatus = document.getElementById('connectionStatus');
+    collectionInfo = document.getElementById('collectionInfo');
+
+    // Load saved configuration
     const savedConfig = localStorage.getItem('qdrantConfig');
     if (savedConfig) {
         config = JSON.parse(savedConfig);
-        qdrantUrlInput.value = config.qdrantUrl || '';
-        openRouterApiKeyInput.value = config.openRouterApiKey || '';
+        if (qdrantUrlInput) qdrantUrlInput.value = config.qdrantUrl || '';
+        if (openRouterApiKeyInput) openRouterApiKeyInput.value = config.openRouterApiKey || '';
         updateStorageType(config.storageType);
     }
     
     // Set default from manifest
     if (!config.memoryInterval) {
         config.memoryInterval = 2;
+    }
+    if (memoryIntervalSelect) {
         memoryIntervalSelect.value = config.memoryInterval;
     }
-    
+
+    // Attach Event Listeners
+    if (saveConfigBtn) {
+        saveConfigBtn.addEventListener('click', () => {
+            config = {
+                qdrantUrl: qdrantUrlInput ? qdrantUrlInput.value : '',
+                openRouterApiKey: openRouterApiKeyInput ? openRouterApiKeyInput.value : '',
+                storageType: getSelectedStorageType(),
+                memoryInterval: memoryIntervalSelect ? parseInt(memoryIntervalSelect.value) : 2
+            };
+
+            localStorage.setItem('qdrantConfig', JSON.stringify(config));
+            updateConnectionStatus('Configuration Saved');
+        });
+    }
+
+    if (uploadChatBtn) {
+        uploadChatBtn.addEventListener('click', async () => {
+            try {
+                if (!config.qdrantUrl) {
+                    throw new Error("Please configure Qdrant URL first");
+                }
+
+                const characterName = getActiveCharacterName();
+                const chatName = getCurrentChatTitle();
+
+                let collectionName = '';
+                if (config.storageType === 'character') {
+                    collectionName = `char_${characterName}`;
+                } else {
+                    collectionName = `chat_${chatName}`;
+                }
+
+                if (!collectionName) {
+                    throw new Error("Cannot determine collection name");
+                }
+
+                // Check if collection exists
+                const collectionExists = await checkCollectionExists(collectionName);
+
+                if (collectionExists) {
+                    alert("Collection already exists for this chat/character!");
+                    return;
+                }
+
+                // Get current chat messages from Silly Tavern v1.15
+                const messages = await getChatMessages();
+
+                if (messages.length === 0) {
+                    throw new Error("No messages found to upload");
+                }
+
+                // Upload messages to Qdrant
+                await uploadMessagesToQdrant(messages, collectionName);
+
+                currentCollection = collectionName;
+                updateCollectionInfo();
+                updateMemoryCounter();
+                updateConnectionStatus(`Uploaded ${messages.length} messages to ${collectionName}`);
+
+            } catch (error) {
+                updateConnectionStatus(`Error: ${error.message}`);
+                console.error('Upload error:', error);
+            }
+        });
+    }
+
+    if (searchBtn) {
+        searchBtn.addEventListener('click', async () => {
+            try {
+                if (!config.qdrantUrl) {
+                    throw new Error("Please configure Qdrant URL first");
+                }
+
+                if (!currentCollection) {
+                    throw new Error("No collection loaded");
+                }
+
+                const keywords = searchKeywordInput ? searchKeywordInput.value.split(',').map(k => k.trim()).filter(k => k) : [];
+                if (keywords.length === 0) {
+                    throw new Error("Please enter at least one keyword");
+                }
+
+                const results = await searchMemoriesInQdrant(keywords, currentCollection);
+
+                displaySearchResults(results);
+                updateConnectionStatus(`Found ${results.length} matching memories`);
+
+            } catch (error) {
+                if (searchResultsDiv) searchResultsDiv.innerHTML = `<p>Error: ${error.message}</p>`;
+                updateConnectionStatus(`Error: ${error.message}`);
+                console.error('Search error:', error);
+            }
+        });
+    }
+
+    if (refreshCounterBtn) {
+        refreshCounterBtn.addEventListener('click', async () => {
+            try {
+                if (!config.qdrantUrl) {
+                    throw new Error("Please configure Qdrant URL first");
+                }
+
+                if (!currentCollection) {
+                    updateMemoryCounter(0);
+                    return;
+                }
+
+                const count = await getMemoryCount(currentCollection);
+                updateMemoryCounter(count);
+                updateConnectionStatus(`Memory count refreshed`);
+
+            } catch (error) {
+                updateConnectionStatus(`Error: ${error.message}`);
+                console.error('Counter error:', error);
+            }
+        });
+    }
+
     // Update UI elements
     updateConnectionStatus('Disconnected');
     updateMemoryCounter();
     
     // Initialize extension in Silly Tavern v1.15 environment
     initExtension();
-});
+}
+
+if (typeof document !== 'undefined' && document.addEventListener) {
+    document.addEventListener('DOMContentLoaded', initDOM);
+}
 
 // Initialize extension functionality
 async function initExtension() {
     try {
         // Attempt to access Silly Tavern APIs
-        if (typeof window.SillyTavern !== 'undefined') {
+        if (typeof window !== 'undefined' && typeof window.SillyTavern !== 'undefined') {
             // Register extension with Silly Tavern v1.15
             await registerExtension();
         } else {
             // Fallback for direct usage
-            console.warn("Silly Tavern context not available. Running in standalone mode.");
-            isActive = true;
+            // Only set active if explicitly called or in browser, otherwise keep false until called
+            if (typeof window !== 'undefined') {
+                 console.warn("Silly Tavern context not available. Running in standalone mode.");
+                 isActive = true;
+            }
         }
     } catch (error) {
         console.error("Failed to initialize extension:", error);
-        updateConnectionStatus("Initialization failed");
+        if (typeof updateConnectionStatus === 'function') {
+            updateConnectionStatus("Initialization failed");
+        }
     }
 }
 
 // Register with Silly Tavern v1.15
 async function registerExtension() {
     // In v1.15, extensions might need to register differently
-    if (window.SillyTavern.extensions) {
+    if (typeof window !== 'undefined' && window.SillyTavern && window.SillyTavern.extensions) {
         try {
             // Register the extension with Silly Tavern
             window.SillyTavern.extensions.register({
@@ -95,7 +240,7 @@ async function registerExtension() {
 // Setup event listeners for Silly Tavern v1.15
 function setupEventListeners() {
     // Listen for new messages (v1.15 event system)
-    if (window.SillyTavern.events) {
+    if (typeof window !== 'undefined' && window.SillyTavern && window.SillyTavern.events) {
         window.SillyTavern.events.on('message', handleNewMessage);
         window.SillyTavern.events.on('characterChanged', handleCharacterChange);
         window.SillyTavern.events.on('chatChanged', handleChatChange);
@@ -104,7 +249,7 @@ function setupEventListeners() {
 
 // Cleanup event listeners
 function cleanupEventListeners() {
-    if (window.SillyTavern.events) {
+    if (typeof window !== 'undefined' && window.SillyTavern && window.SillyTavern.events) {
         window.SillyTavern.events.off('message', handleNewMessage);
         window.SillyTavern.events.off('characterChanged', handleCharacterChange);
         window.SillyTavern.events.off('chatChanged', handleChatChange);
@@ -113,6 +258,7 @@ function cleanupEventListeners() {
 
 // Update radio buttons for storage types
 function updateStorageType(selectedType) {
+    if (!storageTypeRadios || storageTypeRadios.length === 0) return;
     for (let i = 0; i < storageTypeRadios.length; i++) {
         if (storageTypeRadios[i].value === selectedType) {
             storageTypeRadios[i].checked = true;
@@ -121,78 +267,17 @@ function updateStorageType(selectedType) {
     }
 }
 
-// Save configuration
-saveConfigBtn.addEventListener('click', () => {
-    config = {
-        qdrantUrl: qdrantUrlInput.value,
-        openRouterApiKey: openRouterApiKeyInput.value,
-        storageType: getSelectedStorageType(),
-        memoryInterval: parseInt(memoryIntervalSelect.value)
-    };
-    
-    localStorage.setItem('qdrantConfig', JSON.stringify(config));
-    updateConnectionStatus('Configuration Saved');
-});
-
 // Get selected radio button value
 function getSelectedStorageType() {
-    for (let i = 0; i < storageTypeRadios.length; i++) {
-        if (storageTypeRadios[i].checked) {
-            return storageTypeRadios[i].value;
+    if (storageTypeRadios && storageTypeRadios.length > 0) {
+        for (let i = 0; i < storageTypeRadios.length; i++) {
+            if (storageTypeRadios[i].checked) {
+                return storageTypeRadios[i].value;
+            }
         }
     }
     return 'character';
 }
-
-// Upload current chat
-uploadChatBtn.addEventListener('click', async () => {
-    try {
-        if (!config.qdrantUrl) {
-            throw new Error("Please configure Qdrant URL first");
-        }
-
-        const characterName = getActiveCharacterName();
-        const chatName = getCurrentChatTitle();
-        
-        let collectionName = '';
-        if (config.storageType === 'character') {
-            collectionName = `char_${characterName}`;
-        } else {
-            collectionName = `chat_${chatName}`;
-        }
-        
-        if (!collectionName) {
-            throw new Error("Cannot determine collection name");
-        }
-        
-        // Check if collection exists
-        const collectionExists = await checkCollectionExists(collectionName);
-        
-        if (collectionExists) {
-            alert("Collection already exists for this chat/character!");
-            return;
-        }
-        
-        // Get current chat messages from Silly Tavern v1.15
-        const messages = await getChatMessages();
-        
-        if (messages.length === 0) {
-            throw new Error("No messages found to upload");
-        }
-        
-        // Upload messages to Qdrant
-        await uploadMessagesToQdrant(messages, collectionName);
-        
-        currentCollection = collectionName;
-        updateCollectionInfo();
-        updateMemoryCounter();
-        updateConnectionStatus(`Uploaded ${messages.length} messages to ${collectionName}`);
-        
-    } catch (error) {
-        updateConnectionStatus(`Error: ${error.message}`);
-        console.error('Upload error:', error);
-    }
-});
 
 // Get chat messages from Silly Tavern (v1.15 compatible)
 async function getChatMessages() {
@@ -217,61 +302,11 @@ async function getChatMessages() {
     }
 }
 
-// Search memories in Qdrant
-searchBtn.addEventListener('click', async () => {
-    try {
-        if (!config.qdrantUrl) {
-            throw new Error("Please configure Qdrant URL first");
-        }
-
-        if (!currentCollection) {
-            throw new Error("No collection loaded");
-        }
-
-        const keywords = searchKeywordInput.value.split(',').map(k => k.trim()).filter(k => k);
-        if (keywords.length === 0) {
-            throw new Error("Please enter at least one keyword");
-        }
-        
-        const results = await searchMemoriesInQdrant(keywords, currentCollection);
-        
-        displaySearchResults(results);
-        updateConnectionStatus(`Found ${results.length} matching memories`);
-        
-    } catch (error) {
-        searchResultsDiv.innerHTML = `<p>Error: ${error.message}</p>`;
-        updateConnectionStatus(`Error: ${error.message}`);
-        console.error('Search error:', error);
-    }
-});
-
-// Refresh memory counter
-refreshCounterBtn.addEventListener('click', async () => {
-    try {
-        if (!config.qdrantUrl) {
-            throw new Error("Please configure Qdrant URL first");
-        }
-        
-        if (!currentCollection) {
-            updateMemoryCounter(0);
-            return;
-        }
-        
-        const count = await getMemoryCount(currentCollection);
-        updateMemoryCounter(count);
-        updateConnectionStatus(`Memory count refreshed`);
-        
-    } catch (error) {
-        updateConnectionStatus(`Error: ${error.message}`);
-        console.error('Counter error:', error);
-    }
-});
-
 // Get active character name (v1.15 compatible)
 function getActiveCharacterName() {
     try {
         // Check if we have Silly Tavern API access
-        if (window.SillyTavern && window.SillyTavern.getCharacter) {
+        if (typeof window !== 'undefined' && window.SillyTavern && window.SillyTavern.getCharacter) {
             const character = window.SillyTavern.getCharacter();
             return character?.name || 'Unknown_Character';
         }
@@ -287,7 +322,7 @@ function getActiveCharacterName() {
 function getCurrentChatTitle() {
     try {
         // Check if we have Silly Tavern API access
-        if (window.SillyTavern && window.SillyTavern.getChat) {
+        if (typeof window !== 'undefined' && window.SillyTavern && window.SillyTavern.getChat) {
             const chat = window.SillyTavern.getChat();
             return chat?.title || 'Unnamed_Chat';
         }
@@ -376,6 +411,7 @@ async function getMemoryCount(collectionName) {
 
 // Update connection status display
 function updateConnectionStatus(status) {
+    if (!connectionStatus) return;
     connectionStatus.textContent = status;
     connectionStatus.style.color = status.includes('Error') ? '#e74c3c' : 
                                   status.includes('Saved') ? '#27ae60' : 
@@ -384,6 +420,7 @@ function updateConnectionStatus(status) {
 
 // Update collection info display
 function updateCollectionInfo() {
+    if (!collectionInfo) return;
     const charName = getActiveCharacterName();
     const chatName = getCurrentChatTitle();
     
@@ -405,12 +442,15 @@ function updateMemoryCounter(count) {
         memoryCount = count;
     }
     
-    memoryCountSpan.textContent = memoryCount;
-    memoryCountSpan.style.color = memoryCount > 0 ? '#27ae60' : '#7f8c8d';
+    if (memoryCountSpan) {
+        memoryCountSpan.textContent = memoryCount;
+        memoryCountSpan.style.color = memoryCount > 0 ? '#27ae60' : '#7f8c8d';
+    }
 }
 
 // Display search results
 function displaySearchResults(results) {
+    if (!searchResultsDiv) return;
     if (results.length === 0) {
         searchResultsDiv.innerHTML = '<p>No memories found matching your keywords.</p>';
         return;
@@ -439,9 +479,12 @@ function handleNewMessage(messageData) {
     
     messageCounter++;
     
-    // Create agenic memory when interval is met
+    let memoryCreated = false;
+
+    // Create agentic memory when interval is met
     if (messageCounter % config.memoryInterval === 0) {
         createAgenticMemory(message, sender);
+        memoryCreated = true;
     }
     
     // Check for keyword in message and trigger memory creation
@@ -450,7 +493,7 @@ function handleNewMessage(messageData) {
         message.toLowerCase().includes(keyword)
     );
     
-    if (containsKeyword && messageCounter % 5 === 0) {
+    if (!memoryCreated && containsKeyword && messageCounter % 5 === 0) {
         createAgenticMemory(message, sender);
     }
 }
@@ -486,28 +529,32 @@ function createAgenticMemory(content, sender) {
 }
 
 // Cleanup on extension removal
-window.addEventListener('beforeunload', () => {
-    cleanupEventListeners();
-});
+if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('beforeunload', () => {
+        cleanupEventListeners();
+    });
+}
 
 // Simulated initial messages for demonstration
-setTimeout(() => {
-    handleNewMessage({ 
-        message: "Hello, this is a test message to demonstrate agentic memory creation.", 
-        sender: "User", 
-        timestamp: Date.now() 
-    });
-    handleNewMessage({ 
-        message: "The second message for testing purposes.", 
-        sender: "User", 
-        timestamp: Date.now() 
-    });
-    handleNewMessage({ 
-        message: "The third message that should trigger memory generation.", 
-        sender: "User", 
-        timestamp: Date.now() 
-    });
-}, 1000);
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    setTimeout(() => {
+        handleNewMessage({
+            message: "Hello, this is a test message to demonstrate agentic memory creation.",
+            sender: "User",
+            timestamp: Date.now()
+        });
+        handleNewMessage({
+            message: "The second message for testing purposes.",
+            sender: "User",
+            timestamp: Date.now()
+        });
+        handleNewMessage({
+            message: "The third message that should trigger memory generation.",
+            sender: "User",
+            timestamp: Date.now()
+        });
+    }, 1000);
+}
 
 // Export for Silly Tavern environment
 if (typeof module !== 'undefined' && module.exports) {
