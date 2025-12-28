@@ -1,6 +1,6 @@
 {
   "name": "Qdrant Memory Manager",
-  "version": "1.14",
+  "version": "1.15",
   "description": "Manage agentic memories with Qdrant server integration",
   "author": "Silly Tavern Developer",
   "main": "index.js",
